@@ -49,7 +49,7 @@ class Embedding(Module):
         ### BEGIN ASSIGN3_2
         x_one_hot = one_hot(x, self.num_embeddings)                 # (bs, seq_len, num_embeddings)
         x_2d = x_one_hot.view(bs * seq_len, self.num_embeddings)    # (bs * seq_len, num_embeddings)
-        out_2d = x_2d @ self.weights.values     # (bs * seq_len, num_embeddings) @ (num_embeddings, embedding_dim) -> (bs * seq_len, embedding_dim)
+        out_2d = x_2d @ self.weights.value      # (bs * seq_len, num_embeddings) @ (num_embeddings, embedding_dim) -> (bs * seq_len, embedding_dim)
         return out_2d.view(bs, seq_len, self.embedding_dim)         # (bs, seq_len, embedding_dim)
         ### END ASSIGN3_2
 
