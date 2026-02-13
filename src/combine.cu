@@ -145,69 +145,135 @@ __device__ void broadcast_index(const int* big_index, const int* big_shape, cons
 
 
 __global__ void MatrixMultiplyKernel(
-    float* out,
-    const int* out_shape,
-    const int* out_strides,
-    float* a_storage,
-    const int* a_shape,
-    const int* a_strides,
-    float* b_storage,
-    const int* b_shape,
-    const int* b_strides
-) {
+    float *out,
+    const int *out_shape,
+    const int *out_strides,
+    float *a_storage,
+    const int *a_shape,
+    const int *a_strides,
+    float *b_storage,
+    const int *b_shape,
+    const int *b_strides)
+{
+  int batch = blockIdx.z;
+  int a_batch_stride = a_shape[0] > 1 ? a_strides[0] : 0;
+  int b_batch_stride = b_shape[0] > 1 ? b_strides[0] : 0;
 
-    assert(false && "Not Implemented");
+  int row = blockIdx.x * blockDim.x + threadIdx.x;
+  int col = blockIdx.y * blockDim.y + threadIdx.y;
+
+  int m = a_shape[1];
+  int n = a_shape[2];
+  int p = b_shape[2];
+
+  if (row < m && col < p) {
+    int out_batch_stride = out_shape[0] > 1 ? out_strides[0] : 0;
+
+    float temp = 0.0f;
+    for (int k = 0; k < n; k++) {
+      int a_pos = batch * a_batch_stride + row * a_strides[1] + k * a_strides[2];
+      int b_pos = batch * b_batch_stride + k * b_strides[1] + col * b_strides[2];
+      temp += a_storage[a_pos] * b_storage[b_pos];
+    }
+
+    int out_pos = batch * out_batch_stride + row * out_strides[1] + col * out_strides[2];
+    out[out_pos] = temp;
+  }
 }
 
 
 __global__ void mapKernel(
-    float* out, 
-    int* out_shape, 
-    int* out_strides, 
-    int out_size, 
-    float* in_storage, 
-    int* in_shape, 
-    int* in_strides,
+    float *out,
+    int *out_shape,
+    int *out_strides,
+    int out_size,
+    float *in_storage,
+    int *in_shape,
+    int *in_strides,
     int shape_size,
-    int fn_id
-) {
-    assert(false && "Not Implemented");
+    int fn_id)
+{
+  int out_index[MAX_DIMS];
+  int in_index[MAX_DIMS];
+
+  int out_idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (out_idx < out_size) {
+    to_index(out_idx, out_shape, out_index, shape_size);
+    broadcast_index(out_index, out_shape, in_shape, in_index, shape_size, shape_size);
+    int in_pos = index_to_position(in_index, in_strides, shape_size);
+    int out_pos = index_to_position(out_index, out_strides, shape_size);
+    out[out_pos] = fn(fn_id, in_storage[in_pos]);
+  }
 }
 
 
 __global__ void reduceKernel(
-    float* out, 
-    int* out_shape, 
-    int* out_strides, 
-    int out_size, 
-    float* a_storage, 
-    int* a_shape, 
-    int* a_strides, 
+    float *out,
+    int *out_shape,
+    int *out_strides,
+    int out_size,
+    float *a_storage,
+    int *a_shape,
+    int *a_strides,
     int reduce_dim,
     float reduce_value,
     int shape_size,
-    int fn_id
-) {
-    assert(false && "Not Implemented");
+    int fn_id)
+{
+  int out_index[MAX_DIMS];
+
+  int out_idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (out_idx < out_size) {
+    to_index(out_idx, out_shape, out_index, shape_size);
+    int out_pos = index_to_position(out_index, out_strides, shape_size);
+
+    float reduce_val = reduce_value;
+
+    int a_index[MAX_DIMS];
+    for (int i = 0; i < shape_size; i++) {
+      a_index[i] = out_index[i];
+    }
+
+    for (int i = 0; i < a_shape[reduce_dim]; i++) {
+      a_index[reduce_dim] = i;
+      int a_pos = index_to_position(a_index, a_strides, shape_size);
+      reduce_val = fn(fn_id, reduce_val, a_storage[a_pos]);
+    }
+
+    out[out_pos] = reduce_val;
+  }
 }
 
 __global__ void zipKernel(
-    float* out, 
-    int* out_shape, 
-    int* out_strides, 
+    float *out,
+    int *out_shape,
+    int *out_strides,
     int out_size,
     int out_shape_size,
-    float* a_storage, 
-    int* a_shape, 
-    int* a_strides,
+    float *a_storage,
+    int *a_shape,
+    int *a_strides,
     int a_shape_size,
-    float* b_storage, 
-    int* b_shape, 
-    int* b_strides,
+    float *b_storage,
+    int *b_shape,
+    int *b_strides,
     int b_shape_size,
-    int fn_id
-) {
-    assert(false && "Not Implemented");
+    int fn_id)
+{
+  int out_index[MAX_DIMS];
+  int a_index[MAX_DIMS];
+  int b_index[MAX_DIMS];
+
+  int out_idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (out_idx < out_size) {
+    to_index(out_idx, out_shape, out_index, out_shape_size);
+    int out_pos = index_to_position(out_index, out_strides, out_shape_size);
+    broadcast_index(out_index, out_shape, a_shape, a_index, out_shape_size, a_shape_size);
+    int a_pos = index_to_position(a_index, a_strides, a_shape_size);
+    broadcast_index(out_index, out_shape, b_shape, b_index, out_shape_size, b_shape_size);
+    int b_pos = index_to_position(b_index, b_strides, b_shape_size);
+    out[out_pos] = fn(fn_id, a_storage[a_pos], b_storage[b_pos]);
+  }
 }
 
 
